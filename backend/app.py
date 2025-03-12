@@ -1457,5 +1457,360 @@ def calculate_estimated_time(duration, add_voiceover=False):
     
     return base_time + additional_time + voiceover_time
 
+# Initialize animation style templates
+ANIMATION_STYLES = {
+    "sleek": "Sleek and smooth professional animations with clean transitions",
+    "motion": "Dynamic motion graphics with modern design elements",
+    "isometric": "3D isometric animations with depth and perspective",
+    "2d": "2D character animations with personality and movement",
+    "infographic": "Data-driven infographic animations that visualize information clearly"
+}
+
+# Initialize color schemes for ads
+COLOR_SCHEMES = {
+    "blue": {"primary": "#0062cc", "secondary": "#4e95f4", "accent": "#001f3f", "background": "#f5f9ff"},
+    "teal": {"primary": "#00b8a9", "secondary": "#7ae7df", "accent": "#005f56", "background": "#f0fffd"},
+    "purple": {"primary": "#7209b7", "secondary": "#b39cd0", "accent": "#3a0068", "background": "#f9f0ff"},
+    "red": {"primary": "#e71d36", "secondary": "#ff9f93", "accent": "#7a0921", "background": "#fff5f5"},
+    "dark": {"primary": "#2d3436", "secondary": "#636e72", "accent": "#0984e3", "background": "#1e272e"},
+    "pastel": {"primary": "#fdcb6e", "secondary": "#55efc4", "accent": "#fd79a8", "background": "#ffeaa7"}
+}
+
+# Advertising templates
+AD_TEMPLATES = {
+    "product": "Product showcase focusing on features and benefits",
+    "testimonial": "Customer testimonial highlighting positive experiences",
+    "explainer": "Educational explanation of how a product or service works",
+    "storytelling": "Narrative-driven ad that tells a compelling story",
+    "corporate": "Professional corporate messaging with brand emphasis"
+}
+
+@app.route('/api/generate-ad', methods=['POST'])
+def create_ad():
+    """Generate a professional animated advertisement"""
+    data = request.json
+    
+    if not data:
+        return jsonify({"success": False, "error": "No data provided"}), 400
+    
+    # Extract data
+    prompt = data.get('prompt')
+    if not prompt:
+        return jsonify({"success": False, "error": "No ad content provided"}), 400
+    
+    brand_name = data.get('brand_name', '')
+    tagline = data.get('tagline', '')
+    target_audience = data.get('target_audience', '')
+    duration = data.get('duration', 30)
+    style = data.get('style', 'professional')
+    template = data.get('template', 'product')
+    color_scheme = data.get('color_scheme', 'blue')
+    animation_style = data.get('animation_style', 'sleek')
+    voice_id = data.get('voice_id')
+    
+    # Format for color palette
+    colors = COLOR_SCHEMES.get(color_scheme, COLOR_SCHEMES['blue'])
+    
+    # Prepare voice file if provided
+    voice_file = None
+    if voice_id:
+        voice_files = [f for f in os.listdir('voices') if voice_id in f]
+        if voice_files:
+            voice_file = os.path.join('voices', voice_files[0])
+    
+    # Generate a unique job ID
+    job_id = str(uuid.uuid4())
+    
+    # Initialize job status
+    estimated_time = calculate_estimated_time(duration, voice_id is not None)
+    job_status[job_id] = JobStatus(
+        status="processing",
+        progress=0,
+        estimated_time_remaining=estimated_time,
+        started_at=time.time()
+    )
+    
+    # Start processing in background thread
+    process_thread = threading.Thread(
+        target=process_ad_generation,
+        args=(job_id, prompt, brand_name, tagline, target_audience, duration, style, template, color_scheme, animation_style, voice_file)
+    )
+    process_thread.daemon = True
+    process_thread.start()
+    
+    return jsonify({
+        "success": True,
+        "job_id": job_id,
+        "status": "processing"
+    }), 200
+
+def process_ad_generation(job_id, prompt, brand_name, tagline, target_audience, 
+                         duration, style, template, color_scheme, animation_style, voice_file=None):
+    """Process ad generation in the background"""
+    try:
+        # Update job status to 10%
+        job_status[job_id].progress = 10
+        job_status[job_id].estimated_time_remaining = update_estimated_time(job_status[job_id], 10)
+        
+        # 1. Generate ad script using OpenAI
+        system_prompt = f"""You are an expert advertising copywriter and storyboard artist.
+Create a professional {duration}-second ad for a brand called "{brand_name}".
+Tagline: "{tagline}"
+Target audience: {target_audience}
+Style: {style}
+Template: {AD_TEMPLATES.get(template, AD_TEMPLATES['product'])}
+Animation style: {ANIMATION_STYLES.get(animation_style, ANIMATION_STYLES['sleek'])}
+Color scheme: {color_scheme.capitalize()} (Primary: {COLOR_SCHEMES[color_scheme]['primary']}, Secondary: {COLOR_SCHEMES[color_scheme]['secondary']})
+
+Create a detailed storyboard with:
+1. Scene-by-scene description
+2. Visual elements and animations for each scene
+3. Timing for each scene (total must be {duration} seconds)
+4. Text overlays and transitions
+5. Voice-over script that matches the ad visuals
+
+Format as a JSON object with these fields:
+- scenes: Array of scenes with {{"timing": "seconds", "description": "visual description", "animation": "animation details", "voiceover": "script"}}
+- brand_elements: Array of brand elements to include
+- text_overlays: Array of text to display with timing
+- music_suggestion: Type of background music that fits
+"""
+
+        response = openai.chat.completions.create(
+            model="gpt-4-turbo",
+            temperature=0.7,
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": prompt}
+            ]
+        )
+        
+        # Extract the JSON content from the response
+        script_content = response.choices[0].message.content
+        
+        # Clean up the response to extract just the JSON part
+        if "```json" in script_content:
+            script_content = script_content.split("```json")[1].split("```")[0].strip()
+        elif "```" in script_content:
+            script_content = script_content.split("```")[1].split("```")[0].strip()
+            
+        ad_script = json.loads(script_content)
+        
+        # Update job status to 30%
+        job_status[job_id].progress = 30
+        job_status[job_id].estimated_time_remaining = update_estimated_time(job_status[job_id], 30)
+        
+        # 2. Generate animation scenes using visual prompts
+        scenes = []
+        for i, scene in enumerate(ad_script["scenes"]):
+            # Generate scene visuals using DALL-E
+            scene_prompt = f"""Create a professional {style} advertisement visual for {brand_name}.
+Scene description: {scene['description']}
+Animation style: {ANIMATION_STYLES.get(animation_style, ANIMATION_STYLES['sleek'])}
+Color scheme: Primary {COLOR_SCHEMES[color_scheme]['primary']}, Secondary {COLOR_SCHEMES[color_scheme]['secondary']}
+Make it high quality, professional, and NOT AI-generated looking. Create a clean, professional ad frame.
+"""
+            
+            # Use DALL-E to generate scene image
+            try:
+                dalle_response = openai.images.generate(
+                    model="dall-e-3",
+                    prompt=scene_prompt,
+                    size="1024x1024",
+                    quality="standard",
+                    n=1
+                )
+                
+                # Save the generated image
+                image_url = dalle_response.data[0].url
+                image_data = requests.get(image_url).content
+                
+                # Create scene folder
+                scene_folder = os.path.join('temp', job_id)
+                os.makedirs(scene_folder, exist_ok=True)
+                
+                # Save image
+                image_path = os.path.join(scene_folder, f"scene_{i+1}.png")
+                with open(image_path, 'wb') as img_file:
+                    img_file.write(image_data)
+                    
+                # Add to scenes list
+                scenes.append({
+                    "path": image_path,
+                    "duration": float(scene["timing"]),
+                    "voiceover": scene["voiceover"],
+                    "animation": scene["animation"]
+                })
+                
+                # Update progress (scenes are 30% to 70% of progress)
+                progress = 30 + int(40 * (i + 1) / len(ad_script["scenes"]))
+                job_status[job_id].progress = progress
+                job_status[job_id].estimated_time_remaining = update_estimated_time(job_status[job_id], progress)
+                
+            except Exception as e:
+                print(f"Error generating scene {i+1}: {str(e)}")
+                job_status[job_id].status = "failed"
+                job_status[job_id].error = f"Failed to generate scene {i+1}: {str(e)}"
+                return
+        
+        # 3. Generate voiceover audio
+        audio_path = None
+        if voice_file:
+            # Combine all voiceover text
+            voiceover_text = " ".join([scene["voiceover"] for scene in ad_script["scenes"]])
+            
+            try:
+                temp_audio_path = os.path.join('temp', job_id, "voiceover.mp3")
+                
+                # Try to use Eleven Labs for voice generation
+                headers = {
+                    "xi-api-key": ELEVEN_LABS_API_KEY,
+                    "Content-Type": "application/json"
+                }
+                
+                # Use the voice ID to generate TTS
+                data = {
+                    "text": voiceover_text,
+                    "model_id": "eleven_monolingual_v1",
+                    "voice_settings": {
+                        "stability": 0.5,
+                        "similarity_boost": 0.75
+                    }
+                }
+                
+                response = elevenlabs_requests.post(
+                    f"https://api.elevenlabs.io/v1/text-to-speech/{voice_id}",
+                    headers=headers,
+                    json=data
+                )
+                
+                if response.status_code == 200:
+                    with open(temp_audio_path, "wb") as f:
+                        f.write(response.content)
+                    audio_path = temp_audio_path
+                    print(f"Generated TTS audio using Eleven Labs: {audio_path}")
+                else:
+                    print(f"Error generating speech with Eleven Labs: {response.text}")
+                    # Fall back to Google TTS
+                    tts = gtts.gTTS(text=voiceover_text, lang="en", slow=False)
+                    tts.save(temp_audio_path)
+                    audio_path = temp_audio_path
+            except Exception as e:
+                print(f"Error generating voiceover: {str(e)}")
+                # Fall back to Google TTS
+                try:
+                    temp_audio_path = os.path.join('temp', job_id, "voiceover.mp3")
+                    tts = gtts.gTTS(text=voiceover_text, lang="en", slow=False)
+                    tts.save(temp_audio_path)
+                    audio_path = temp_audio_path
+                except Exception as audio_err:
+                    print(f"Error generating fallback audio: {str(audio_err)}")
+        
+        # Update progress to 80%
+        job_status[job_id].progress = 80
+        job_status[job_id].estimated_time_remaining = update_estimated_time(job_status[job_id], 80)
+        
+        # 4. Create the animated video using MoviePy
+        try:
+            # Create temp folder for output
+            output_folder = os.path.join(OUTPUT_FOLDER, job_id)
+            os.makedirs(output_folder, exist_ok=True)
+            
+            output_path = os.path.join(output_folder, f"ad_{job_id}.mp4")
+            
+            # Create video clips for each scene
+            video_clips = []
+            for scene in scenes:
+                # Create image clip
+                img_clip = ImageClip(scene["path"]).set_duration(scene["duration"])
+                
+                # Apply animation effects based on description
+                animation_desc = scene["animation"].lower()
+                
+                if "zoom" in animation_desc:
+                    img_clip = img_clip.fx(vfx.resize, lambda t: 1 + 0.05 * t)
+                
+                if "fade in" in animation_desc:
+                    img_clip = img_clip.fx(vfx.fadein, 0.5)
+                
+                if "fade out" in animation_desc:
+                    img_clip = img_clip.fx(vfx.fadeout, 0.5)
+                
+                if "slide" in animation_desc:
+                    img_clip = img_clip.fx(vfx.slide_in, 0.5, 'left')
+                
+                # Add texts from the ad_script if they match this scene's timing
+                text_clips = []
+                for text_overlay in ad_script.get("text_overlays", []):
+                    if text_overlay.get("scene") == scenes.index(scene) + 1:
+                        txt = TextClip(
+                            text_overlay.get("text", ""), 
+                            fontsize=text_overlay.get("size", 40), 
+                            color=text_overlay.get("color", "white"), 
+                            font=text_overlay.get("font", "Arial-Bold"),
+                            stroke_color=text_overlay.get("stroke_color", "black"),
+                            stroke_width=text_overlay.get("stroke_width", 1)
+                        )
+                        
+                        txt = txt.set_position(text_overlay.get("position", "center"))
+                        txt = txt.set_duration(scene["duration"])
+                        
+                        if "fade" in text_overlay.get("animation", "").lower():
+                            txt = txt.fadein(0.5).fadeout(0.5)
+                            
+                        text_clips.append(txt)
+                
+                # If there are text clips, compose them with the image clip
+                if text_clips:
+                    scene_clip = CompositeVideoClip([img_clip] + text_clips)
+                    scene_clip = scene_clip.set_duration(img_clip.duration)
+                else:
+                    scene_clip = img_clip
+                
+                video_clips.append(scene_clip)
+            
+            # Concatenate all clips
+            final_clip = concatenate_videoclips(video_clips, method="compose")
+            
+            # Add audio if available
+            if audio_path:
+                audio = AudioFileClip(audio_path)
+                final_clip = final_clip.set_audio(audio)
+            
+            # Write the final video
+            final_clip.write_videofile(
+                output_path,
+                fps=24,
+                codec="libx264",
+                audio_codec="aac",
+                preset="ultrafast"
+            )
+            
+            # Update job status to completed
+            job_status[job_id].status = "completed"
+            job_status[job_id].progress = 100
+            job_status[job_id].estimated_time_remaining = 0
+            job_status[job_id].result = {
+                "video_path": output_path,
+                "script": ad_script,
+                "used_custom_voice": voice_file is not None,
+                "brand_name": brand_name,
+                "tagline": tagline,
+                "ad_template": template,
+                "ad_style": style,
+                "animation_style": animation_style
+            }
+            
+        except Exception as e:
+            print(f"Error creating video: {str(e)}")
+            job_status[job_id].status = "failed"
+            job_status[job_id].error = f"Failed to create video: {str(e)}"
+            return
+        
+    except Exception as e:
+        print(f"Error in ad generation: {str(e)}")
+        job_status[job_id].status = "failed"
+        job_status[job_id].error = f"Error in ad generation: {str(e)}"
+
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=8000, debug=True) 
