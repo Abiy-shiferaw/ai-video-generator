@@ -236,27 +236,27 @@ def process_video_generation(job_id, image_path, request_data, voice_file=None, 
             job_status[job_id].status = "failed"
             job_status[job_id].error = f"Failed to generate video: {str(e)}"
 
-def update_estimated_time(job_data, current_progress):
+def update_estimated_time(job_status, current_progress):
     """
     Update the estimated time remaining based on elapsed time and progress
     
     Args:
-        job_data: The current job status dictionary
+        job_status: The current job status dictionary
         current_progress: The current progress percentage
         
     Returns:
         Updated estimated time remaining in seconds
     """
     # If there's no start time, return the original estimate
-    if "started_at" not in job_data or not job_data["started_at"]:
-        return job_data.get("estimated_time_remaining", 60)  # Default to 60 seconds if not set
+    if "started_at" not in job_status or not job_status["started_at"]:
+        return job_status.get("estimated_time_remaining", 60)  # Default to 60 seconds if not set
         
     # Calculate elapsed time
-    elapsed_time = time.time() - job_data["started_at"]
+    elapsed_time = time.time() - job_status["started_at"]
     
     # If progress is very low, return the original estimate
     if current_progress < 10:
-        return job_data.get("estimated_time_remaining", 60)
+        return job_status.get("estimated_time_remaining", 60)
         
     # Calculate estimated total time based on elapsed time and progress
     estimated_total_time = (elapsed_time / current_progress) * 100
@@ -1079,31 +1079,20 @@ def generate_video():
 @app.route('/api/status/<job_id>', methods=['GET'])
 def check_job_status(job_id):
     """Check the status of a job"""
-    # Check in job_status dictionary first
-    if job_id in job_status:
+    if job_id not in job_status:
         return jsonify({
-            "status": job_status[job_id]["status"],
-            "progress": job_status[job_id]["progress"],
-            "estimated_time_remaining": job_status[job_id].get("estimated_time_remaining"),
-            "result": job_status[job_id].get("result"),
-            "error": job_status[job_id].get("error")
-        })
-    
-    # If not found, check in video_jobs dictionary
-    if job_id in video_jobs:
-        return jsonify({
-            "status": video_jobs[job_id]["status"],
-            "progress": video_jobs[job_id]["progress"],
-            "estimated_time_remaining": video_jobs[job_id].get("estimated_time_remaining"),
-            "result": video_jobs[job_id].get("result"),
-            "error": video_jobs[job_id].get("error")
-        })
-    
-    # If not found in either dictionary, return a 404 error
+            "status": "not_found",
+            "error": "Job not found"
+        }), 404
+        
+    # Return job status
     return jsonify({
-        "status": "not_found",
-        "error": "Job not found"
-    }), 404
+        "status": job_status[job_id]["status"],
+        "progress": job_status[job_id]["progress"],
+        "estimated_time_remaining": job_status[job_id].get("estimated_time_remaining"),
+        "result": job_status[job_id].get("result"),
+        "error": job_status[job_id].get("error")
+    })
 
 @app.route('/api/templates', methods=['GET'])
 def get_templates():
@@ -1178,142 +1167,37 @@ def download_file(filepath):
 
 @app.route('/api/upload-voice', methods=['POST'])
 def upload_voice():
-    """Upload a voice file for use in video generation"""
-    if 'file' not in request.files:
-        return jsonify({"success": False, "error": "No file part"})
+    """
+    Endpoint to upload a voice file
+    """
+    if 'voice' not in request.files:
+        return jsonify({"success": False, "error": "No voice file provided"}), 400
         
-    file = request.files['file']
+    file = request.files['voice']
     
     if file.filename == '':
-        return jsonify({"success": False, "error": "No selected file"})
+        return jsonify({"success": False, "error": "No voice file selected"}), 400
         
-    if file and allowed_file(file.filename, ['mp3', 'wav']):
-        # Save the file
-        voice_dir = os.path.join(app.config['UPLOAD_FOLDER'], 'voices')
-        os.makedirs(voice_dir, exist_ok=True)
-        
-        filename = secure_filename(file.filename)
-        filepath = os.path.join(voice_dir, filename)
-        file.save(filepath)
-        
-        return jsonify({
-            "success": True,
-            "message": "Voice file uploaded successfully",
-            "filename": filename,
-            "filepath": filepath
-        })
-    else:
-        return jsonify({"success": False, "error": "File type not allowed"})
-
-@app.route('/api/clone-voice', methods=['POST'])
-def clone_voice():
-    """Clone a voice using ElevenLabs API"""
-    try:
-        data = request.json
-        
-        if not data:
-            return jsonify({"success": False, "error": "No data provided"})
-            
-        voice_sample_path = data.get('voice_sample_path')
-        voice_name = data.get('voice_name', 'Custom Voice')
-        description = data.get('description', 'Custom cloned voice')
-        
-        if not voice_sample_path or not os.path.exists(voice_sample_path):
-            return jsonify({"success": False, "error": "Voice sample file not found"})
-            
-        # Check if we have an ElevenLabs API key
-        if not ELEVEN_LABS_API_KEY:
-            return jsonify({"success": False, "error": "ElevenLabs API key not configured"})
-            
-        # Prepare the request data for voice cloning
-        headers = {
-            "xi-api-key": ELEVEN_LABS_API_KEY,
-            "Accept": "application/json"
-        }
-        
-        # First, create a new voice
-        voice_data = {
-            "name": voice_name,
-            "description": description,
-            "labels": {"accent": "custom"}
-        }
-        
-        # Create the voice
-        create_response = elevenlabs_requests.post(
-            "https://api.elevenlabs.io/v1/voices/add",
-            headers=headers,
-            json=voice_data
-        )
-        
-        if create_response.status_code != 200:
-            return jsonify({
-                "success": False, 
-                "error": f"Failed to create voice: {create_response.text}"
-            })
-            
-        # Get the voice ID from the response
-        voice_id = create_response.json().get("voice_id")
-        
-        if not voice_id:
-            return jsonify({
-                "success": False,
-                "error": "Failed to get voice ID from response"
-            })
-            
-        # Now, add the voice sample to train the model
-        with open(voice_sample_path, 'rb') as f:
-            files = {'files': (os.path.basename(voice_sample_path), f, 'audio/mpeg')}
-            
-            add_sample_response = elevenlabs_requests.post(
-                f"https://api.elevenlabs.io/v1/voices/{voice_id}/edit/add",
-                headers={"xi-api-key": ELEVEN_LABS_API_KEY},
-                files=files
-            )
-            
-        if add_sample_response.status_code != 200:
-            return jsonify({
-                "success": False,
-                "error": f"Failed to add voice sample: {add_sample_response.text}"
-            })
-            
-        # Store the cloned voice in our database
-        # Add to our custom voices collection
-        custom_voice = {
-            "voice_id": voice_id,
-            "name": voice_name,
-            "category": "custom",
-            "gender": "custom",
-            "preview_url": f"/api/voices/{os.path.basename(voice_sample_path)}",
-            "description": description,
-            "is_cloned": True
-        }
-        
-        # Save this info to a file for persistence
-        cloned_voices_file = os.path.join(app.config['UPLOAD_FOLDER'], 'cloned_voices.json')
-        cloned_voices = []
-        
-        if os.path.exists(cloned_voices_file):
-            try:
-                with open(cloned_voices_file, 'r') as f:
-                    cloned_voices = json.load(f)
-            except:
-                cloned_voices = []
-                
-        cloned_voices.append(custom_voice)
-        
-        with open(cloned_voices_file, 'w') as f:
-            json.dump(cloned_voices, f)
-        
-        return jsonify({
-            "success": True,
-            "message": "Voice cloned successfully",
-            "voice_id": voice_id,
-            "voice_name": voice_name
-        })
-        
-    except Exception as e:
-        print(f"Error cloning voice: {str(e)}")
-        return jsonify({"success": False, "error": str(e)})
+    # Check if file is an allowed audio format
+    allowed_extensions = {'mp3', 'wav', 'm4a', 'ogg'}
+    if not '.' in file.filename or file.filename.rsplit('.', 1)[1].lower() not in allowed_extensions:
+        return jsonify({"success": False, "error": "Invalid file format"}), 400
+    
+    # Generate a unique filename
+    voice_id = str(uuid.uuid4())
+    filename = f"voice_{voice_id}.{file.filename.rsplit('.', 1)[1].lower()}"
+    filepath = os.path.join('voices', filename)
+    
+    # Save the file
+    file.save(filepath)
+    
+    # Return the voice ID and URL
+    return jsonify({
+        "success": True,
+        "voice_id": voice_id,
+        "filename": filename,
+        "url": f"/api/voices/{filename}"
+    }), 200
 
 @app.route('/api/voices/<filename>', methods=['GET'])
 def get_voice(filename):
@@ -1372,39 +1256,6 @@ def get_available_voices():
                 "gender": "female",
                 "preview_url": "",
                 "description": "A friendly and approachable female voice, perfect for explanations."
-            },
-            # Adding more professional voices
-            {
-                "voice_id": "jBpfuIE2acCO8z3wKNLl",
-                "name": "Michael",
-                "category": "professional",
-                "gender": "male",
-                "preview_url": "",
-                "description": "A mature, authoritative male voice with excellent enunciation."
-            },
-            {
-                "voice_id": "SOYHLrjzK2CQxersoZHG",
-                "name": "Charlotte",
-                "category": "professional",
-                "gender": "female",
-                "preview_url": "",
-                "description": "A confident, articulate female voice with a British accent."
-            },
-            {
-                "voice_id": "XB0fDUnXU5powFXDhCwa",
-                "name": "Thomas",
-                "category": "professional",
-                "gender": "male",
-                "preview_url": "",
-                "description": "A friendly, trustworthy male voice with natural cadence."
-            },
-            {
-                "voice_id": "flq6f7yk4E4fJM5XTYuZ",
-                "name": "Sophia",
-                "category": "professional",
-                "gender": "female",
-                "preview_url": "",
-                "description": "A warm, conversational female voice that sounds genuine and approachable."
             }
         ]
         
@@ -1425,64 +1276,8 @@ def get_available_voices():
                         "description": "Your custom uploaded voice."
                     })
         
-        # Get cloned voices from the JSON file
-        cloned_voices = []
-        cloned_voices_file = os.path.join(app.config['UPLOAD_FOLDER'], 'cloned_voices.json')
-        if os.path.exists(cloned_voices_file):
-            try:
-                with open(cloned_voices_file, 'r') as f:
-                    cloned_voices = json.load(f)
-            except Exception as e:
-                print(f"Error loading cloned voices: {str(e)}")
-        
-        # Fetch additional voices from ElevenLabs API if available
-        if ELEVEN_LABS_API_KEY:
-            try:
-                headers = {
-                    "xi-api-key": ELEVEN_LABS_API_KEY,
-                    "Accept": "application/json"
-                }
-                
-                response = elevenlabs_requests.get(
-                    "https://api.elevenlabs.io/v1/voices",
-                    headers=headers
-                )
-                
-                if response.status_code == 200:
-                    api_voices = response.json().get("voices", [])
-                    
-                    # Filter out voices that are already in our list
-                    existing_voice_ids = [v["voice_id"] for v in elevenlabs_voices]
-                    
-                    for voice in api_voices:
-                        if voice["voice_id"] not in existing_voice_ids:
-                            # Determine category based on labels or default to "other"
-                            category = "other"
-                            
-                            # Extract labels if they exist
-                            labels = voice.get("labels", {})
-                            
-                            if "professional" in labels.values():
-                                category = "professional"
-                            elif "casual" in labels.values():
-                                category = "casual"
-                            elif labels.get("accent") == "custom":
-                                category = "custom"
-                                
-                            # Add to our voices list
-                            elevenlabs_voices.append({
-                                "voice_id": voice["voice_id"],
-                                "name": voice["name"],
-                                "category": category,
-                                "gender": labels.get("gender", "unknown"),
-                                "preview_url": voice.get("preview_url", ""),
-                                "description": voice.get("description", "Voice from ElevenLabs.")
-                            })
-            except Exception as e:
-                print(f"Error fetching voices from ElevenLabs: {str(e)}")
-        
-        # Combine all voices
-        all_voices = elevenlabs_voices + custom_voices + cloned_voices
+        # Combine default and custom voices
+        all_voices = elevenlabs_voices + custom_voices
         
         return jsonify({
             "success": True,

@@ -4,7 +4,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useDropzone } from 'react-dropzone';
 import { motion } from 'framer-motion';
 import axios from 'axios';
-import { FaUpload, FaVideo, FaVolumeUp, FaSpinner, FaCheck, FaMicrophone, FaStop, FaImages, FaTrash, FaBullhorn, FaPalette, FaBriefcase } from 'react-icons/fa';
+import { FaUpload, FaVideo, FaVolumeUp, FaSpinner, FaCheck, FaMicrophone, FaStop, FaImages, FaTrash, FaBullhorn, FaPalette, FaBriefcase, FaLightbulb, FaUserTie, FaBox, FaInfoCircle, FaClock } from 'react-icons/fa';
 
 interface Template {
   id: string;
@@ -56,10 +56,20 @@ interface VoiceFile {
 
 interface VoiceUploadResponse {
   success: boolean;
-  voice_id: string;
-  filename: string;
-  url: string;
+  message?: string;
   error?: string;
+  filename: string;
+  filepath: string;
+  voice_id?: string;
+  url?: string;
+}
+
+interface CloneVoiceResponse {
+  success: boolean;
+  message?: string;
+  error?: string;
+  voice_id: string;
+  voice_name: string;
 }
 
 interface TrainingImage {
@@ -99,6 +109,19 @@ interface TrainingStatusResponse {
   error?: string;
 }
 
+// Add a new interface for voice data
+interface Voice {
+  voice_id: string;
+  name: string;
+  category: string;
+  gender: string;
+}
+
+interface VoicesResponse {
+  success: boolean;
+  voices: Voice[];
+}
+
 export default function Home() {
   const [photo, setPhoto] = useState<File | null>(null);
   const [preview, setPreview] = useState<string | null>(null);
@@ -134,10 +157,25 @@ export default function Home() {
   const [targetAudience, setTargetAudience] = useState('');
   const [colorScheme, setColorScheme] = useState('blue');
   const [animationStyle, setAnimationStyle] = useState('sleek');
+  const [isAdvancedVideoMode, setIsAdvancedVideoMode] = useState(false);
+  const [advancedVideoPrompt, setAdvancedVideoPrompt] = useState('');
+  const [advancedVideoStyle, setAdvancedVideoStyle] = useState('realistic');
+  const [advancedVideoDuration, setAdvancedVideoDuration] = useState(10);
+  const [availableVoices, setAvailableVoices] = useState<Voice[]>([]);
+  const [advancedVideoSource, setAdvancedVideoSource] = useState<string | null>(null);
+  const [advancedVideoAddVoiceover, setAdvancedVideoAddVoiceover] = useState(false);
+  const [advancedVideoVoiceId, setAdvancedVideoVoiceId] = useState<string | null>(null);
+  const [showPromptsModal, setShowPromptsModal] = useState(false);
+  const [testimonialTemplate, setTestimonialTemplate] = useState('');
+  const [productTemplate, setProductTemplate] = useState('');
+  const [explainerTemplate, setExplainerTemplate] = useState('');
   
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<BlobPart[]>([]);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Add a new state for the main selected mode
+  const [selectedTab, setSelectedTab] = useState<'adCreator' | 'advancedVideo' | 'voice' | null>(null);
 
   // Fetch templates when component mounts
   useEffect(() => {
@@ -152,8 +190,71 @@ export default function Home() {
       }
     }
     
+    // Get available effects
+    fetchEffects();
+    
+    // Get available templates
     fetchTemplates();
+    
+    // Get available voices
+    fetchVoices();
+    
+    // Initialize template prompts
+    setTestimonialTemplate(
+      "HVAC Testimonial Video with Professional Technician\n\n" +
+      "Scene 1: Close-up of an HVAC technician in a branded uniform standing in front of an air conditioning unit at a residential property. The technician should look experienced and trustworthy, talking directly to the camera about our 24/7 emergency services.\n\n" + 
+      "Scene 2: Show the technician working on an HVAC system, demonstrating expertise and attention to detail.\n\n" +
+      "Scene 3: Technician back on camera explaining how our team guarantees customer satisfaction and showing before/after results."
+    );
+    
+    setProductTemplate(
+      "Professional HVAC Product Showcase Video\n\n" +
+      "Scene 1: Introduction showing our latest high-efficiency air conditioning unit with clean, modern design and Energy Star rating.\n\n" + 
+      "Scene 2: Detailed view of the key features including smart thermostat integration, quiet operation (only 56 decibels), and humidity control system.\n\n" +
+      "Scene 3: Demonstration of easy installation process and maintenance, emphasizing the 10-year warranty and 24/7 support."
+    );
+    
+    setExplainerTemplate(
+      "HVAC Educational Explainer Video\n\n" +
+      "Scene 1: Introduction explaining how heating and cooling systems work in modern homes, with simple diagrams or animations.\n\n" + 
+      "Scene 2: Common issues homeowners face with their HVAC systems and warning signs to watch for (unusual noises, inconsistent temperatures, high energy bills).\n\n" +
+      "Scene 3: Expert tips for maintaining your HVAC system, including regular filter changes, keeping outdoor units clear, and the importance of professional seasonal tune-ups."
+    );
   }, []);
+
+  // Add fetchEffects function
+  const fetchEffects = async () => {
+    try {
+      const response = await axios.get<{effects: Effect[]}>('http://localhost:8000/api/effects');
+      // You can store the effects in state if needed
+      console.log('Available effects:', response.data);
+    } catch (error) {
+      console.error('Error fetching effects:', error);
+    }
+  };
+
+  // Add fetchVoices function
+  const fetchVoices = async () => {
+    try {
+      const response = await axios.get<VoicesResponse>('http://localhost:8000/api/voices/available');
+      if (response.data.success && response.data.voices) {
+        setAvailableVoices(response.data.voices);
+        
+        // Default to a professional male voice if available
+        const defaultVoice = response.data.voices.find((voice: Voice) => 
+          voice.category === 'professional' && voice.gender === 'male'
+        );
+        
+        if (defaultVoice) {
+          setAdvancedVideoVoiceId(defaultVoice.voice_id);
+        } else if (response.data.voices.length > 0) {
+          setAdvancedVideoVoiceId(response.data.voices[0].voice_id);
+        }
+      }
+    } catch (error) {
+      console.error('Error fetching voices:', error);
+    }
+  };
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     accept: {
@@ -354,21 +455,70 @@ export default function Home() {
   
   const uploadVoiceRecording = async (blob: Blob) => {
     const formData = new FormData();
-    formData.append('voice', blob, `recording_${Date.now()}.wav`);
+    formData.append('file', blob, `recording_${Date.now()}.wav`);
     
     try {
       const response = await axios.post<VoiceUploadResponse>('http://localhost:8000/api/upload-voice', formData);
       if (response.data.success) {
-        const newVoice = {
-          id: response.data.voice_id,
-          name: response.data.filename,
-          url: response.data.url
-        };
-        setUploadedVoices(prev => [...prev, newVoice]);
-        setSelectedVoice(newVoice.id);
+        // Show a dialog to ask the user if they want to clone this voice
+        if (confirm('Voice uploaded successfully! Would you like to clone this voice for high-quality AI narration?')) {
+          await cloneVoice(response.data.filepath);
+        } else {
+          // Just use the uploaded voice directly without cloning
+          const newVoice: VoiceFile = {
+            id: response.data.voice_id || `custom-${Date.now()}`,
+            name: response.data.filename,
+            url: response.data.url || `/api/voices/${response.data.filename}`
+          };
+          setUploadedVoices(prev => [...prev, newVoice]);
+          if (newVoice.id) {
+            setSelectedVoice(newVoice.id);
+          }
+        }
       }
     } catch (error) {
       console.error('Error uploading voice recording:', error);
+      alert('Failed to upload voice recording. Please try again.');
+    }
+  };
+  
+  const cloneVoice = async (voiceSamplePath: string) => {
+    try {
+      // Show a loading state
+      setLoading(true);
+      setError(null);
+      
+      // Prompt for a name for the cloned voice
+      const voiceName = prompt('Enter a name for your cloned voice:', 'My Custom Voice');
+      
+      if (!voiceName) {
+        setLoading(false);
+        return; // User cancelled
+      }
+      
+      // Call the clone voice API
+      const response = await axios.post<CloneVoiceResponse>('http://localhost:8000/api/clone-voice', {
+        voice_sample_path: voiceSamplePath,
+        voice_name: voiceName,
+        description: `Cloned voice for ${voiceName}`
+      });
+      
+      if (response.data.success) {
+        alert(`Voice "${voiceName}" cloned successfully! You can now use it for video narration.`);
+        
+        // Refresh the available voices to include the new cloned voice
+        fetchVoices();
+        
+        // Auto-select the new voice
+        setSelectedVoice(response.data.voice_id);
+      } else {
+        alert(`Failed to clone voice: ${response.data.error || 'Unknown error'}`);
+      }
+    } catch (error) {
+      console.error('Error cloning voice:', error);
+      alert('Failed to clone voice. Please try again.');
+    } finally {
+      setLoading(false);
     }
   };
   
@@ -381,13 +531,15 @@ export default function Home() {
     try {
       const response = await axios.post<VoiceUploadResponse>('http://localhost:8000/api/upload-voice', formData);
       if (response.data.success) {
-        const newVoice = {
-          id: response.data.voice_id,
+        const newVoice: VoiceFile = {
+          id: response.data.voice_id || `custom-${Date.now()}`,
           name: response.data.filename,
-          url: response.data.url
+          url: response.data.url || `/api/voices/${response.data.filename}`
         };
         setUploadedVoices(prev => [...prev, newVoice]);
-        setSelectedVoice(newVoice.id);
+        if (newVoice.id) {
+          setSelectedVoice(newVoice.id);
+        }
       }
     } catch (error) {
       console.error('Error uploading voice file:', error);
@@ -647,773 +799,914 @@ export default function Home() {
     }
   };
 
+  // Add this new function
+  const handleAdvancedVideoGeneration = async () => {
+    if (!advancedVideoPrompt) {
+      setError('Please enter a description for your advanced video');
+      return;
+    }
+    
+    try {
+      setLoading(true);
+      setError(null);
+      
+      // Define the response type for consistency
+      interface AdvancedVideoResponse {
+        success: boolean;
+        job_id: string;
+        message: string;
+      }
+      
+      // Send request to generate advanced video
+      const response = await axios.post<AdvancedVideoResponse>('http://localhost:8000/api/generate-advanced-video', {
+        prompt: advancedVideoPrompt,
+        style: advancedVideoStyle,
+        duration: advancedVideoDuration,
+        video_source: advancedVideoSource,
+        add_voiceover: advancedVideoAddVoiceover,
+        voice_id: advancedVideoVoiceId
+      });
+      
+      // Check if the response was successful and has a job_id
+      if (response.data.success && response.data.job_id) {
+        // Get the job ID and start checking status
+        setJobId(response.data.job_id);
+        setJobStatus({
+          status: 'initializing',
+          progress: 0
+        });
+        
+        // Start polling for job status
+        const checkStatus = async () => {
+          try {
+            const statusResponse = await axios.get<JobStatus>(`http://localhost:8000/api/status/${response.data.job_id}`);
+            setJobStatus(statusResponse.data);
+            
+            if (statusResponse.data.status === 'completed' || statusResponse.data.status === 'failed') {
+              setLoading(false);
+              if (statusResponse.data.status === 'failed') {
+                setError(statusResponse.data.error || 'Failed to generate video');
+              }
+            } else {
+              // Continue checking every 2 seconds
+              setTimeout(checkStatus, 2000);
+            }
+          } catch (err) {
+            console.error('Error checking job status:', err);
+            setLoading(false);
+            setError('Failed to check video generation status');
+          }
+        };
+        
+        // Start checking immediately
+        checkStatus();
+        
+      } else {
+        setError('Failed to generate advanced video');
+        setLoading(false);
+      }
+    } catch (error) {
+      console.error('Error generating advanced video:', error);
+      setError('Error generating advanced video. Please try again.');
+      setLoading(false);
+    }
+  };
+
+  // Add these new functions
+  const handleGenerateAd = async () => {
+    if (!brandName || !adText) {
+      setError('Please provide a brand name and ad text');
+      return;
+    }
+
+    setLoading(true);
+    setError(null);
+
+    try {
+      // Prepare the request data
+      const requestData = {
+        ad_text: adText, // Use ad_text to match the backend's expected parameter
+        brand_name: brandName,
+        tagline: tagline,
+        target_audience: targetAudience,
+        template: adTemplate,
+        style: adStyle,
+        color_scheme: colorScheme,
+        animation_style: animationStyle,
+        duration: adDuration,
+        add_voiceover: addVoiceover,
+        voice_id: selectedVoice
+      };
+
+      // Send request to generate ad
+      const response = await axios.post<VideoResponse>(
+        'http://localhost:8000/api/generate-ad',
+        requestData
+      );
+
+      if (response.data.job_id) {
+        setJobId(response.data.job_id);
+      } else {
+        throw new Error('No job ID returned');
+      }
+    } catch (err) {
+      console.error('Error generating ad:', err);
+      setLoading(false);
+      setError('Failed to generate ad video');
+    }
+  };
+
+  const handleGenerateAdvancedVideo = async () => {
+    if (!advancedVideoPrompt) {
+      setError('Please provide a video description');
+      return;
+    }
+
+    setLoading(true);
+    setError(null);
+
+    try {
+      // Prepare the request data
+      const requestData = {
+        prompt: advancedVideoPrompt,
+        style: advancedVideoStyle,
+        duration: advancedVideoDuration
+      };
+
+      // Send request to generate advanced video
+      const response = await axios.post<VideoResponse>(
+        'http://localhost:8000/api/generate-advanced-video',
+        requestData
+      );
+
+      if (response.data.job_id) {
+        setJobId(response.data.job_id);
+      } else {
+        throw new Error('No job ID returned');
+      }
+    } catch (err) {
+      console.error('Error generating advanced video:', err);
+      setLoading(false);
+      setError('Failed to generate advanced video');
+    }
+  };
+
   return (
-    <div className="min-h-screen bg-gradient-to-br from-indigo-100 to-purple-100 py-12 px-4">
-      <div className="max-w-6xl mx-auto bg-white rounded-xl shadow-xl overflow-hidden">
-        <div className="p-8">
-          <div className="flex justify-center mb-10">
-            <h1 className="text-4xl font-bold text-center bg-clip-text text-transparent bg-gradient-to-r from-purple-600 to-indigo-600">
-              AI Video Generator
-            </h1>
-          </div>
-          
-          <div className="mb-8 flex justify-center space-x-4">
-            <button
-              onClick={() => {
-                setIsTrainingMode(false);
-                setIsTextToVideoMode(false);
-                setIsAdMode(false);
-              }}
-              className={`px-4 py-2 rounded-lg ${!isTrainingMode && !isTextToVideoMode && !isAdMode ? 'bg-purple-600 text-white' : 'bg-gray-200 text-gray-700'}`}
-            >
-              Image to Video
-            </button>
-            <button
-              onClick={() => {
-                setIsTrainingMode(false);
-                setIsTextToVideoMode(true);
-                setIsAdMode(false);
-              }}
-              className={`px-4 py-2 rounded-lg ${isTextToVideoMode ? 'bg-purple-600 text-white' : 'bg-gray-200 text-gray-700'}`}
-            >
-              Text to Video
-            </button>
-            <button
-              onClick={() => {
-                setIsTrainingMode(true);
-                setIsTextToVideoMode(false);
-                setIsAdMode(false);
-              }}
-              className={`px-4 py-2 rounded-lg ${isTrainingMode ? 'bg-purple-600 text-white' : 'bg-gray-200 text-gray-700'}`}
-            >
-              Train Custom Model
-            </button>
-            <button
-              onClick={() => {
-                setIsTrainingMode(false);
-                setIsTextToVideoMode(false);
-                setIsAdMode(true);
-              }}
-              className={`px-4 py-2 rounded-lg ${isAdMode ? 'bg-purple-600 text-white' : 'bg-gray-200 text-gray-700'}`}
-            >
-              Professional Ad Creator
-            </button>
-          </div>
-          
-          {isTextToVideoMode ? (
-            // Text-to-Video Mode UI
-            <motion.div
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              className="bg-gray-800 rounded-lg p-6 mb-8"
-            >
-              <h2 className="text-2xl font-semibold mb-4">Generate Video from Text</h2>
-              <div className="space-y-4">
-                <div>
-                  <label className="block text-gray-300 mb-2">Describe your video</label>
-                  <textarea
-                    className="w-full bg-gray-700 border border-gray-600 rounded-lg p-4 text-white"
-                    rows={4}
-                    placeholder="Describe what you want to see in your video, including subjects, environment, actions, color scheme, etc."
-                    value={textPrompt}
-                    onChange={(e) => setTextPrompt(e.target.value)}
-                  ></textarea>
-                </div>
-                
-                <div className="flex flex-col md:flex-row md:space-x-4 space-y-4 md:space-y-0">
-                  <div className="w-full md:w-1/2">
-                    <label className="block text-gray-300 mb-2">Visual Style</label>
-                    <select 
-                      className="w-full bg-gray-700 border border-gray-600 rounded-lg p-2 text-white"
-                      value={videoStyle}
-                      onChange={(e) => setVideoStyle(e.target.value)}
-                    >
-                      <option value="casual">Casual/Natural</option>
-                      <option value="cinematic">Cinematic</option>
-                      <option value="professional">Professional/Corporate</option>
-                      <option value="creative">Creative/Artistic</option>
-                      <option value="vintage">Vintage/Retro</option>
-                    </select>
-                  </div>
-                  
-                  <div className="w-full md:w-1/2">
-                    <label className="block text-gray-300 mb-2">Duration (seconds)</label>
-                    <div className="flex items-center">
-                      <input
-                        type="range"
-                        min="5"
-                        max="30"
-                        value={videoDuration}
-                        onChange={(e) => setVideoDuration(parseInt(e.target.value))}
-                        className="w-full"
-                      />
-                      <div className="flex justify-between text-gray-400 text-sm ml-2">
-                        <span>{videoDuration}s</span>
-                      </div>
-                    </div>
-                  </div>
-                </div>
+    <main className="min-h-screen bg-gradient-to-b from-gray-900 to-black text-white p-6">
+      <div className="max-w-5xl mx-auto">
+        <header className="text-center mb-10">
+          <h1 className="text-4xl font-bold mb-2 text-gradient bg-clip-text text-transparent bg-gradient-to-r from-blue-400 to-purple-500">
+            AI Video Generator
+          </h1>
+          <p className="text-xl text-gray-300">Create professional videos with AI</p>
+        </header>
 
-                <div className="flex items-center">
-                  <input
-                    type="checkbox"
-                    id="voiceover-text"
-                    checked={addVoiceover}
-                    onChange={(e) => setAddVoiceover(e.target.checked)}
-                    className="mr-2"
-                  />
-                  <label htmlFor="voiceover-text" className="text-gray-300">
-                    Add AI Voiceover
-                  </label>
-                </div>
+        {!selectedTab ? (
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-8 mb-10">
+            <motion.div 
+              className="bg-gradient-to-br from-blue-900/40 to-indigo-900/40 rounded-xl p-6 hover:shadow-xl transition-all border border-blue-800/50 cursor-pointer"
+              whileHover={{ scale: 1.05 }}
+              whileTap={{ scale: 0.98 }}
+              onClick={() => setSelectedTab('adCreator')}
+            >
+              <div className="flex justify-center mb-4">
+                <FaBullhorn className="text-5xl text-blue-400" />
               </div>
-            </motion.div>
-          ) : null}
-          
-          {isTrainingMode ? (
-            // Training Mode UI
-            <div className="bg-white p-6 rounded-lg shadow-md mb-8">
-              <h2 className="text-xl font-semibold mb-4">Train Your Custom Model</h2>
-              
-              <p className="mb-4 text-gray-700">
-                Upload multiple photos and videos of yourself to create a personalized model that looks and moves like you.
-                <br/>
-                <span className="text-sm">Recommended: Upload at least 10 varied images and 2-3 short video clips for best results.</span>
+              <h2 className="text-2xl font-bold text-center mb-2">Professional Ad Creator</h2>
+              <p className="text-gray-300 text-center">
+                Create sleek, professional-looking animated advertisements with brand customization
               </p>
-              
-              {/* Training Images Upload */}
-              <div 
-                {...getTrainingRootProps()} 
-                className="border-2 border-dashed border-gray-300 rounded-lg p-6 mb-4 text-center cursor-pointer hover:bg-gray-50"
-              >
-                <input {...getTrainingInputProps()} />
-                <FaImages className="text-3xl mx-auto mb-2 text-gray-400" />
-                <p>Drag and drop images and videos here, or click to select</p>
-                <p className="text-sm text-gray-500 mt-1">Supports JPG, PNG, MP4, MOV</p>
+            </motion.div>
+
+            <motion.div 
+              className="bg-gradient-to-br from-purple-900/40 to-pink-900/40 rounded-xl p-6 hover:shadow-xl transition-all border border-purple-800/50 cursor-pointer"
+              whileHover={{ scale: 1.05 }}
+              whileTap={{ scale: 0.98 }}
+              onClick={() => setSelectedTab('advancedVideo')}
+            >
+              <div className="flex justify-center mb-4">
+                <FaVideo className="text-5xl text-purple-400" />
+              </div>
+              <h2 className="text-2xl font-bold text-center mb-2">Advanced Motion Video</h2>
+              <p className="text-gray-300 text-center">
+                Create dynamic AI-generated videos with real motion and professional effects
+              </p>
+            </motion.div>
+
+            <motion.div 
+              className="bg-gradient-to-br from-green-900/40 to-teal-900/40 rounded-xl p-6 hover:shadow-xl transition-all border border-green-800/50 cursor-pointer"
+              whileHover={{ scale: 1.05 }}
+              whileTap={{ scale: 0.98 }}
+              onClick={() => setSelectedTab('voice')}
+            >
+              <div className="flex justify-center mb-4">
+                <FaVolumeUp className="text-5xl text-green-400" />
+              </div>
+              <h2 className="text-2xl font-bold text-center mb-2">AI Voiceover</h2>
+              <p className="text-gray-300 text-center">
+                Add professional AI-generated voiceovers to your videos with voice customization
+              </p>
+            </motion.div>
+          </div>
+        ) : (
+          <motion.button
+            className="mb-8 flex items-center gap-2 text-gray-400 hover:text-white transition-colors"
+            onClick={() => {
+              setSelectedTab(null);
+              setPhoto(null);
+              setPreview(null);
+              setJobId(null);
+              setJobStatus(null);
+              setError(null);
+            }}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+            </svg>
+            Back to Main Menu
+          </motion.button>
+        )}
+
+        {selectedTab === 'adCreator' && (
+          <motion.div 
+            className="bg-gradient-to-br from-blue-900/30 to-indigo-900/30 rounded-xl p-8 border border-blue-800/50"
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+          >
+            <h2 className="text-2xl font-bold mb-6 flex items-center gap-2">
+              <FaBullhorn className="text-blue-400" />
+              Professional Ad Creator
+            </h2>
+            
+            {/* Ad Creator Form */}
+            <div className="space-y-6">
+              <div>
+                <label className="block text-sm font-medium mb-1">Brand Name</label>
+                <input
+                  type="text"
+                  value={brandName}
+                  onChange={(e) => setBrandName(e.target.value)}
+                  className="w-full bg-gray-800/50 border border-gray-700 rounded-lg p-3 text-white"
+                  placeholder="Your company name"
+                />
               </div>
               
-              {/* Previews */}
-              {trainingImages.length > 0 && (
-                <div className="mt-4 mb-6">
-                  <h3 className="font-medium mb-2">Uploaded Files ({trainingImages.length}):</h3>
-                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
-                    {trainingImages.map(img => (
-                      <div key={img.id} className="relative">
-                        {img.type === 'image' ? (
-                          <img 
-                            src={img.preview} 
-                            className="h-24 w-24 object-cover rounded-md" 
-                            alt="Preview" 
-                          />
-                        ) : (
-                          <div className="h-24 w-24 bg-gray-200 rounded-md flex items-center justify-center">
-                            <FaVideo className="text-gray-500" />
-                          </div>
-                        )}
-                        <button 
-                          onClick={() => removeTrainingImage(img.id)}
-                          className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-1"
-                        >
-                          <FaTrash size={12} />
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
+              <div>
+                <label className="block text-sm font-medium mb-1">Ad Text/Script</label>
+                <textarea
+                  value={adText}
+                  onChange={(e) => setAdText(e.target.value)}
+                  className="w-full bg-gray-800/50 border border-gray-700 rounded-lg p-3 text-white h-32"
+                  placeholder="Describe your product or service"
+                />
+              </div>
               
-              {/* Training Button */}
-              {!modelId ? (
-                <button
-                  onClick={startTraining}
-                  disabled={trainingImages.length < 3 || trainingInProgress}
-                  className={`px-6 py-3 rounded-lg text-white font-semibold w-full ${
-                    trainingImages.length < 3 || trainingInProgress
-                      ? 'bg-gray-400 cursor-not-allowed'
-                      : 'bg-green-600 hover:bg-green-700'
-                  }`}
-                >
-                  {trainingInProgress ? (
-                    <span className="flex items-center justify-center">
-                      <FaSpinner className="animate-spin mr-2" /> Training Model... {trainingProgress}%
-                    </span>
-                  ) : (
-                    'Start Training'
-                  )}
-                </button>
-              ) : (
-                <div className="bg-green-50 border border-green-200 p-4 rounded-lg text-center">
-                  <p className="text-green-800 font-medium">Model trained successfully!</p>
-                  <p className="text-sm text-green-700">Your custom model is ready to use. You can now generate videos.</p>
-                </div>
-              )}
-            </div>
-          ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-              {/* Photo Upload Section */}
-              <motion.div
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                className="bg-gray-800 rounded-lg p-6"
-              >
-                <h2 className="text-2xl font-semibold mb-4">Upload Your Photo</h2>
-                <div
-                  {...getRootProps()}
-                  className={`border-2 border-dashed rounded-lg p-8 text-center cursor-pointer transition-colors
-                    ${isDragActive ? 'border-blue-500 bg-blue-500/10' : 'border-gray-600 hover:border-blue-500'}`}
-                >
-                  <input {...getInputProps()} />
-                  {preview ? (
-                    <img
-                      src={preview}
-                      alt="Preview"
-                      className="max-w-full h-auto rounded-lg"
-                    />
-                  ) : (
-                    <div className="space-y-4">
-                      <p className="text-gray-400">
-                        Drag and drop your photo here, or click to select
-                      </p>
-                      <p className="text-sm text-gray-500">
-                        Supported formats: JPEG, JPG, PNG
-                      </p>
-                    </div>
-                  )}
-                </div>
-
-                {/* Video Settings */}
-                <div className="mt-6">
-                  <h3 className="text-xl font-semibold mb-4">Video Settings</h3>
-                  
-                  <div className="space-y-4">
-                    <div>
-                      <label className="block text-gray-300 mb-2">Style</label>
-                      <select 
-                        className="w-full bg-gray-700 border border-gray-600 rounded-lg p-2 text-white"
-                        value={videoStyle}
-                        onChange={(e) => setVideoStyle(e.target.value)}
-                      >
-                        <option value="casual">Casual</option>
-                        <option value="professional">Professional</option>
-                        <option value="energetic">Energetic</option>
-                        <option value="cinematic">Cinematic</option>
-                        <option value="dramatic">Dramatic</option>
-                      </select>
-                    </div>
-                    
-                    <div>
-                      <label className="block text-gray-300 mb-2">Duration (seconds)</label>
-                      <input 
-                        type="range"
-                        min="5"
-                        max="60"
-                        step="5"
-                        value={videoDuration}
-                        onChange={(e) => setVideoDuration(parseInt(e.target.value))}
-                        className="w-full"
-                      />
-                      <div className="flex justify-between text-gray-400 text-sm">
-                        <span>5s</span>
-                        <span>{videoDuration}s</span>
-                        <span>60s</span>
-                      </div>
-                    </div>
-
-                    <div>
-                      <label className="block text-gray-300 mb-2">Template</label>
-                      <select 
-                        className="w-full bg-gray-700 border border-gray-600 rounded-lg p-2 text-white"
-                        value={selectedTemplate || ''}
-                        onChange={(e) => setSelectedTemplate(e.target.value || null)}
-                      >
-                        <option value="">No Template (Custom)</option>
-                        {templates.map(template => (
-                          <option key={template.id} value={template.id}>
-                            {template.name} - {template.description}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-
-                    <div className="flex items-center">
-                      <input
-                        type="checkbox"
-                        id="voiceover"
-                        checked={addVoiceover}
-                        onChange={(e) => setAddVoiceover(e.target.checked)}
-                        className="mr-2"
-                      />
-                      <label htmlFor="voiceover" className="text-gray-300">
-                        Add AI Voiceover from Generated Script
-                      </label>
-                    </div>
-                  </div>
-                </div>
-              </motion.div>
-
-              {/* Voice Upload Section */}
-              <motion.div
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.2 }}
-                className="bg-gray-800 rounded-lg p-6"
-              >
-                <h2 className="text-2xl font-semibold mb-4">Add Your Voice</h2>
-                <div className="space-y-4">
-                  <div {...getVoiceRootProps()} className="border-2 border-dashed border-gray-600 rounded-lg p-6 mb-4 text-center cursor-pointer hover:bg-gray-700">
-                    <input {...getVoiceInputProps()} />
-                    <FaVolumeUp className="text-3xl mx-auto mb-2 text-gray-400" />
-                    <p>Drag and drop a voice recording here, or click to select</p>
-                    <p className="text-sm text-gray-500 mt-1">Supports MP3, WAV (1-3 minutes recommended)</p>
-                  </div>
-                  
-                  <div className="mt-4 mb-4">
-                    <h3 className="font-medium mb-2">Or record your voice directly:</h3>
-                    <div className="flex items-center space-x-4">
-                      {isRecording ? (
-                        <button 
-                          onClick={stopRecording}
-                          className="bg-red-600 text-white px-4 py-2 rounded-lg flex items-center"
-                        >
-                          <FaStop className="mr-2" /> Stop Recording ({recordingTime}s)
-                        </button>
-                      ) : (
-                        <button 
-                          onClick={startRecording}
-                          className="bg-blue-600 text-white px-4 py-2 rounded-lg flex items-center"
-                        >
-                          <FaMicrophone className="mr-2" /> Start Recording
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                  
-                  {/* Voice Selection */}
-                  {uploadedVoices.length > 0 && (
-                    <div className="mt-4">
-                      <h3 className="font-medium mb-2">Select voice to use:</h3>
-                      <select 
-                        className="w-full p-2 border border-gray-300 rounded-md"
-                        value={selectedVoice || ''}
-                        onChange={(e) => setSelectedVoice(e.target.value)}
-                      >
-                        <option value="">Default AI voice</option>
-                        {uploadedVoices.map(voice => (
-                          <option key={voice.id} value={voice.id}>
-                            {voice.name}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                  )}
-                </div>
-              </motion.div>
-            </div>
-          )}
-
-          {isAdMode && (
-            <motion.div
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.5 }}
-              className="bg-white rounded-xl p-6 shadow-md"
-            >
-              <h2 className="text-2xl font-semibold text-purple-700 mb-6 flex items-center">
-                <FaBullhorn className="mr-2" /> Professional Ad Creator
-              </h2>
-              
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Brand Name
-                  </label>
-                  <input
-                    type="text"
-                    value={brandName}
-                    onChange={(e) => setBrandName(e.target.value)}
-                    className="w-full p-3 border border-gray-300 rounded-lg focus:ring-purple-500 focus:border-purple-500"
-                    placeholder="Enter your brand name"
-                  />
-                </div>
-                
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Tagline
-                  </label>
+                  <label className="block text-sm font-medium mb-1">Tagline</label>
                   <input
                     type="text"
                     value={tagline}
                     onChange={(e) => setTagline(e.target.value)}
-                    className="w-full p-3 border border-gray-300 rounded-lg focus:ring-purple-500 focus:border-purple-500"
-                    placeholder="Enter your tagline"
+                    className="w-full bg-gray-800/50 border border-gray-700 rounded-lg p-3 text-white"
+                    placeholder="Your catchy tagline"
+                  />
+                </div>
+                
+                <div>
+                  <label className="block text-sm font-medium mb-1">Target Audience</label>
+                  <input
+                    type="text"
+                    value={targetAudience}
+                    onChange={(e) => setTargetAudience(e.target.value)}
+                    className="w-full bg-gray-800/50 border border-gray-700 rounded-lg p-3 text-white"
+                    placeholder="Who is this ad for?"
                   />
                 </div>
               </div>
               
-              <div className="mb-6">
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Ad Content
-                </label>
-                <textarea
-                  value={adText}
-                  onChange={(e) => setAdText(e.target.value)}
-                  className="w-full p-3 border border-gray-300 rounded-lg focus:ring-purple-500 focus:border-purple-500 h-32"
-                  placeholder="Describe your ad content, product benefits, and key selling points..."
-                />
-              </div>
-              
-              <div className="mb-6">
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Target Audience
-                </label>
-                <input
-                  type="text"
-                  value={targetAudience}
-                  onChange={(e) => setTargetAudience(e.target.value)}
-                  className="w-full p-3 border border-gray-300 rounded-lg focus:ring-purple-500 focus:border-purple-500"
-                  placeholder="Describe your target audience"
-                />
-              </div>
-              
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Ad Template
-                  </label>
+                  <label className="block text-sm font-medium mb-1">Ad Template</label>
                   <select
                     value={adTemplate}
                     onChange={(e) => setAdTemplate(e.target.value)}
-                    className="w-full p-3 border border-gray-300 rounded-lg focus:ring-purple-500 focus:border-purple-500"
+                    className="w-full bg-gray-800/50 border border-gray-700 rounded-lg p-3 text-white"
                   >
                     <option value="product">Product Showcase</option>
                     <option value="testimonial">Testimonial</option>
                     <option value="explainer">Explainer</option>
-                    <option value="storytelling">Storytelling</option>
                     <option value="corporate">Corporate</option>
                   </select>
                 </div>
                 
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Visual Style
-                  </label>
-                  <select
-                    value={adStyle}
-                    onChange={(e) => setAdStyle(e.target.value)}
-                    className="w-full p-3 border border-gray-300 rounded-lg focus:ring-purple-500 focus:border-purple-500"
-                  >
-                    <option value="professional">Professional/Corporate</option>
-                    <option value="minimalist">Clean Minimalist</option>
-                    <option value="vibrant">Vibrant & Bold</option>
-                    <option value="luxury">Luxury & Premium</option>
-                    <option value="playful">Playful & Fun</option>
-                  </select>
-                </div>
-              </div>
-              
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    <FaPalette className="inline mr-1" /> Color Scheme
-                  </label>
-                  <select
-                    value={colorScheme}
-                    onChange={(e) => setColorScheme(e.target.value)}
-                    className="w-full p-3 border border-gray-300 rounded-lg focus:ring-purple-500 focus:border-purple-500"
-                  >
-                    <option value="blue">Corporate Blue</option>
-                    <option value="teal">Teal & Mint</option>
-                    <option value="purple">Purple Gradient</option>
-                    <option value="red">Vibrant Red</option>
-                    <option value="dark">Dark Mode</option>
-                    <option value="pastel">Soft Pastels</option>
-                  </select>
-                </div>
-                
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Animation Style
-                  </label>
+                  <label className="block text-sm font-medium mb-1">Animation Style</label>
                   <select
                     value={animationStyle}
                     onChange={(e) => setAnimationStyle(e.target.value)}
-                    className="w-full p-3 border border-gray-300 rounded-lg focus:ring-purple-500 focus:border-purple-500"
+                    className="w-full bg-gray-800/50 border border-gray-700 rounded-lg p-3 text-white"
                   >
                     <option value="sleek">Sleek & Smooth</option>
-                    <option value="motion">Motion Graphics</option>
+                    <option value="motion_graphics">Motion Graphics</option>
                     <option value="isometric">Isometric</option>
-                    <option value="2d">2D Character</option>
                     <option value="infographic">Animated Infographics</option>
+                  </select>
+                </div>
+                
+                <div>
+                  <label className="block text-sm font-medium mb-1">Color Scheme</label>
+                  <select
+                    value={colorScheme}
+                    onChange={(e) => setColorScheme(e.target.value)}
+                    className="w-full bg-gray-800/50 border border-gray-700 rounded-lg p-3 text-white"
+                  >
+                    <option value="blue">Professional Blue</option>
+                    <option value="green">Natural Green</option>
+                    <option value="purple">Creative Purple</option>
+                    <option value="red">Bold Red</option>
+                    <option value="custom">Custom</option>
                   </select>
                 </div>
               </div>
               
-              <div className="mb-6">
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Duration (seconds)
-                </label>
-                <div className="flex items-center">
-                  <input
-                    type="range"
-                    min="15"
-                    max="60"
-                    step="5"
-                    value={adDuration}
-                    onChange={(e) => setAdDuration(parseInt(e.target.value))}
-                    className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer"
-                  />
-                  <span className="ml-3 text-gray-700">{adDuration}s</span>
-                </div>
+              <div className="flex items-center space-x-2">
+                <input
+                  type="checkbox"
+                  id="addVoiceover"
+                  checked={addVoiceover}
+                  onChange={(e) => setAddVoiceover(e.target.checked)}
+                  className="w-4 h-4 bg-gray-800 rounded border-gray-700"
+                />
+                <label htmlFor="addVoiceover" className="text-sm">Add AI Voiceover</label>
               </div>
               
-              <div className="mb-6">
-                <div className="flex items-center">
-                  <input
-                    type="checkbox"
-                    id="adVoiceover"
-                    checked={addVoiceover}
-                    onChange={(e) => setAddVoiceover(e.target.checked)}
-                    className="h-4 w-4 text-purple-600 focus:ring-purple-500 border-gray-300 rounded"
-                  />
-                  <label htmlFor="adVoiceover" className="ml-2 block text-sm text-gray-700">
-                    Add AI Voiceover
-                  </label>
+              {addVoiceover && (
+                <div>
+                  <label className="block text-sm font-medium mb-1">Voice Style</label>
+                  <select
+                    value={selectedVoice || ""}
+                    onChange={(e) => setSelectedVoice(e.target.value || null)}
+                    className="w-full bg-gray-800/50 border border-gray-700 rounded-lg p-3 text-white"
+                  >
+                    <option value="">Select a voice</option>
+                    <optgroup label="Professional Voices">
+                      {availableVoices
+                        .filter(voice => voice.category === 'professional')
+                        .map(voice => (
+                          <option key={voice.voice_id} value={voice.voice_id}>
+                            {voice.name}
+                          </option>
+                        ))
+                      }
+                    </optgroup>
+                    <optgroup label="Casual Voices">
+                      {availableVoices
+                        .filter(voice => voice.category === 'casual')
+                        .map(voice => (
+                          <option key={voice.voice_id} value={voice.voice_id}>
+                            {voice.name}
+                          </option>
+                        ))
+                      }
+                    </optgroup>
+                    <optgroup label="Other Voices">
+                      {availableVoices
+                        .filter(voice => !['professional', 'casual', 'custom'].includes(voice.category))
+                        .map(voice => (
+                          <option key={voice.voice_id} value={voice.voice_id}>
+                            {voice.name}
+                          </option>
+                        ))
+                      }
+                    </optgroup>
+                    <optgroup label="Your Custom Voices">
+                      {availableVoices
+                        .filter(voice => voice.category === 'custom')
+                        .map(voice => (
+                          <option key={voice.voice_id} value={voice.voice_id}>
+                            {voice.name}
+                          </option>
+                        ))
+                      }
+                    </optgroup>
+                  </select>
                 </div>
-                
-                {addVoiceover && (
-                  <div className="mt-4 ml-6">
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Select Voice
-                    </label>
-                    <select
-                      value={selectedVoice || ""}
-                      onChange={(e) => setSelectedVoice(e.target.value)}
-                      className="w-full p-3 border border-gray-300 rounded-lg focus:ring-purple-500 focus:border-purple-500"
-                    >
-                      <option value="">Select a voice</option>
-                      {uploadedVoices.map((voice) => (
-                        <option key={voice.id} value={voice.id}>
-                          {voice.name}
-                        </option>
-                      ))}
-                    </select>
-                    
-                    {/* Voice recording UI (existing code) */}
-                  </div>
-                )}
-              </div>
+              )}
               
-              <div className="flex justify-center mt-8">
-                <button
-                  onClick={handleAdGeneration}
-                  disabled={!adText || loading}
-                  className={`flex items-center justify-center px-6 py-3 rounded-lg text-white font-medium ${
-                    !adText || loading
-                      ? 'bg-gray-400 cursor-not-allowed'
-                      : 'bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700'
-                  }`}
-                >
-                  {loading ? (
-                    <>
-                      <FaSpinner className="animate-spin mr-2" /> Generating Ad...
-                    </>
-                  ) : (
-                    <>
-                      <FaBullhorn className="mr-2" /> Generate Professional Ad
-                    </>
-                  )}
-                </button>
-              </div>
-            </motion.div>
-          )}
-
-          {/* Video Generation Section */}
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.4 }}
-            className="bg-gray-800 rounded-lg p-6 mt-8"
-          >
-            <h2 className="text-2xl font-semibold mb-4">Generate Your Video</h2>
-            <div className="space-y-4">
-              {isTextToVideoMode ? (
-                <button
-                  onClick={handleTextToVideoGeneration}
-                  disabled={!textPrompt || loading}
-                  className={`w-full py-3 px-4 rounded-lg font-semibold transition-colors
-                    ${loading || !textPrompt
-                      ? 'bg-gray-600 cursor-not-allowed'
-                      : 'bg-blue-500 hover:bg-blue-600'}`}
-                >
-                  {loading ? 'Generating...' : 'Generate Video from Text'}
-                </button>
-              ) : (
-                <button
-                  onClick={handleGenerateVideo}
-                  disabled={!photo || loading}
-                  className={`w-full py-3 px-4 rounded-lg font-semibold transition-colors
-                    ${loading || !photo
-                      ? 'bg-gray-600 cursor-not-allowed'
-                      : 'bg-blue-500 hover:bg-blue-600'}`}
-                >
-                  {loading ? 'Generating...' : 'Generate Video'}
-                </button>
-              )}
-
-              {error && (
-                <div className="bg-red-500/10 border border-red-500 text-red-500 p-4 rounded-lg">
-                  {error}
-                </div>
-              )}
-
-              {jobStatus && (
-                <div className="space-y-4">
-                  <div className="w-full bg-gray-700 rounded-full h-2.5">
-                    <div
-                      className="bg-blue-500 h-2.5 rounded-full transition-all duration-500"
-                      style={{ width: `${jobStatus.progress}%` }}
-                    ></div>
+              <button
+                onClick={() => handleGenerateAd()}
+                disabled={loading || !adText || !brandName}
+                className={`w-full py-3 px-6 rounded-lg font-medium transition-all ${
+                  loading || !adText || !brandName
+                    ? 'bg-gray-700 text-gray-400'
+                    : 'bg-gradient-to-r from-blue-500 to-indigo-600 hover:from-blue-600 hover:to-indigo-700 text-white'
+                }`}
+              >
+                {loading ? (
+                  <div className="flex items-center justify-center">
+                    <FaSpinner className="animate-spin mr-2" />
+                    Generating Ad...
                   </div>
-                  <p className="text-sm text-gray-400">
-                    Status: {jobStatus.status.replace('_', ' ')}
-                  </p>
-                </div>
-              )}
-
-              {/* Right column: Preview and Results */}
-              <div>
-                {/* Processing Status */}
-                {loading && jobStatus && (
-                  <div className="bg-white p-6 rounded-lg shadow-md mb-8">
-                    <h2 className="text-xl font-bold mb-4">Processing</h2>
-                    <div className="mb-4">
-                      <div className="flex justify-between mb-1">
-                        <span className="text-sm font-medium">
-                          {jobStatus.status === 'processing' ? 'Processing...' : jobStatus.status}
-                        </span>
-                        <span className="text-sm font-medium">{jobStatus.progress}%</span>
-                      </div>
-                      <div className="w-full bg-gray-200 rounded-full h-2.5">
-                        <div 
-                          className="bg-blue-600 h-2.5 rounded-full" 
-                          style={{ width: `${jobStatus.progress}%` }}
-                        ></div>
-                      </div>
-                    </div>
-                    
-                    {/* Estimated Time Countdown */}
-                    {jobStatus.estimated_time_remaining !== undefined && jobStatus.estimated_time_remaining > 0 && (
-                      <div className="text-center p-4 bg-gray-100 rounded-md">
-                        <div className="flex justify-center items-center mb-2">
-                          {/* Circular countdown timer */}
-                          <div className="relative w-16 h-16">
-                            <svg className="w-full h-full" viewBox="0 0 100 100">
-                              {/* Background circle */}
-                              <circle 
-                                className="text-gray-200" 
-                                strokeWidth="8" 
-                                stroke="currentColor" 
-                                fill="transparent" 
-                                r="40" 
-                                cx="50" 
-                                cy="50" 
-                              />
-                              {/* Progress circle - stroke-dasharray is 2*PI*r, stroke-dashoffset decreases as time passes */}
-                              <circle 
-                                className="text-blue-600" 
-                                strokeWidth="8" 
-                                stroke="currentColor" 
-                                fill="transparent" 
-                                r="40" 
-                                cx="50" 
-                                cy="50" 
-                                strokeLinecap="round"
-                                strokeDasharray="251.2"
-                                strokeDashoffset={251.2 * (1 - (jobStatus.progress / 100))}
-                                transform="rotate(-90 50 50)"
-                              />
-                            </svg>
-                            <div className="absolute inset-0 flex items-center justify-center">
-                              <span className="text-xs font-bold">{formatTime(jobStatus.estimated_time_remaining)}</span>
-                            </div>
-                          </div>
-                        </div>
-                        <p className="text-sm text-gray-700 font-medium">
-                          Estimated time remaining
-                        </p>
-                        <p className="text-xs text-gray-500 mt-1">
-                          This is an estimate and may vary based on system performance
-                        </p>
-                      </div>
-                    )}
-                    
-                    {jobStatus.error && (
-                      <div className="mt-4 p-3 bg-red-100 text-red-800 rounded-md">
-                        <p className="text-sm font-medium">Error: {jobStatus.error}</p>
-                      </div>
-                    )}
-                  </div>
+                ) : (
+                  'Generate Professional Ad'
                 )}
-
-                {jobStatus?.result && (
-                  <div className="mt-6 space-y-4">
-                    <h3 className="text-lg font-semibold">Generated Content</h3>
-                    
-                    {/* Video Preview */}
-                    <div>
-                      <h3 className="font-medium mb-2">Your Video:</h3>
-                      <video 
-                        controls 
-                        className="w-full rounded-lg border border-gray-200"
-                        src={`http://localhost:8000/api/download/${jobStatus.result.video_path}`}
-                      ></video>
-                      
-                      <div className="mt-4">
-                        <a 
-                          href={`http://localhost:8000/api/download/${jobStatus.result.video_path}`}
-                          download
-                          className="bg-green-600 text-white px-4 py-2 rounded-lg inline-block"
-                        >
-                          Download Video
-                        </a>
-                      </div>
-                    </div>
-                    
-                    {/* Generated Content section */}
-                    <div>
-                      <h3 className="font-medium mb-2">Generated Script:</h3>
-                      <div className="bg-gray-50 p-4 rounded-lg mb-6">
-                        <p>{typeof jobStatus.result.script === 'object' ? JSON.stringify(jobStatus.result.script) : jobStatus.result.script}</p>
-                      </div>
-                      
-                      <h3 className="font-medium mb-2">Suggested Effects:</h3>
-                      <div className="flex flex-wrap gap-2 mb-6">
-                        {jobStatus.result.effects && jobStatus.result.effects.map((effect, index) => (
-                          <span key={index} className="bg-blue-100 text-blue-800 px-3 py-1 rounded-full text-sm">
-                            {effect}
-                          </span>
-                        ))}
-                      </div>
-                      
-                      {/* Show information about custom model and voice if used */}
-                      {(jobStatus.result.used_custom_model || jobStatus.result.used_custom_voice) && (
-                        <div className="mt-4 p-3 bg-blue-50 rounded-lg border border-blue-200">
-                          {jobStatus.result.used_custom_model && (
-                            <p className="text-blue-700 mb-1">✓ Used your custom trained model for personalization</p>
-                          )}
-                          {jobStatus.result.used_custom_voice && (
-                            <p className="text-blue-700">✓ Used your custom voice for narration</p>
-                          )}
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                )}
-              </div>
+              </button>
             </div>
           </motion.div>
-        </div>
+        )}
+
+        {selectedTab === 'advancedVideo' && (
+          <motion.div 
+            className="bg-gradient-to-br from-purple-900/30 to-pink-900/30 rounded-xl p-8 border border-purple-800/50"
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.5 }}
+          >
+            <div className="p-4 mb-4 bg-white/10 rounded shadow-md">
+              <h3 className="text-lg font-medium mb-2 text-white">Video Generation Tips</h3>
+              <div className="text-sm text-gray-200">
+                <p className="mb-2"><strong>For better AI-generated videos:</strong></p>
+                <ul className="list-disc pl-5 mb-3">
+                  <li className="mb-1">Select <strong>"Runway"</strong> or <strong>"Stability"</strong> as the video source for true AI generation</li>
+                  <li className="mb-1">Be very specific and detailed in your prompts (e.g., "A cinematic drone shot of a coastal city at sunset with waves crashing against cliffs")</li>
+                  <li className="mb-1">Include style keywords like "cinematic", "photorealistic", "high-quality", "professional"</li>
+                  <li className="mb-1">Mention camera angles: "aerial view", "close-up", "wide angle", "tracking shot"</li>
+                  <li className="mb-1">Specify lighting: "golden hour", "dramatic lighting", "soft natural light"</li>
+                  <li className="mb-1">For best results, keep scenes simple and focused on 1-2 main elements</li>
+                </ul>
+              </div>
+            </div>
+            
+            <h2 className="text-2xl font-bold mb-6 text-white">Advanced Video Generation</h2>
+            
+            {/* Advanced Video Form */}
+            <div className="space-y-6">
+              <div>
+                <label className="block text-sm font-medium mb-1">Video Description</label>
+                <textarea
+                  value={advancedVideoPrompt}
+                  onChange={(e) => setAdvancedVideoPrompt(e.target.value)}
+                  className="w-full bg-gray-800/50 border border-gray-700 rounded-lg p-3 text-white h-32"
+                  placeholder="Describe the video you want to create in detail. For best results with hybrid videos, include intro, middle content, and conclusion sections."
+                />
+                <div className="mt-2">
+                  <div className="flex flex-wrap gap-2 mt-1">
+                    <button
+                      type="button"
+                      onClick={() => setShowPromptsModal(true)}
+                      className="inline-flex items-center px-2.5 py-1.5 text-xs font-medium rounded text-purple-300 bg-purple-900/40 hover:bg-purple-900/70 transition"
+                    >
+                      <FaLightbulb className="mr-1" /> Prompt Ideas
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setAdvancedVideoPrompt(testimonialTemplate)}
+                      className="inline-flex items-center px-2.5 py-1.5 text-xs font-medium rounded text-green-300 bg-green-900/40 hover:bg-green-900/70 transition"
+                    >
+                      <FaUserTie className="mr-1" /> Testimonial
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setAdvancedVideoPrompt(productTemplate)}
+                      className="inline-flex items-center px-2.5 py-1.5 text-xs font-medium rounded text-blue-300 bg-blue-900/40 hover:bg-blue-900/70 transition"
+                    >
+                      <FaBox className="mr-1" /> Product Demo
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setAdvancedVideoPrompt(explainerTemplate)}
+                      className="inline-flex items-center px-2.5 py-1.5 text-xs font-medium rounded text-amber-300 bg-amber-900/40 hover:bg-amber-900/70 transition"
+                    >
+                      <FaInfoCircle className="mr-1" /> Explainer
+                    </button>
+                  </div>
+                </div>
+              </div>
+              
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium mb-1">Video Source</label>
+                  <select
+                    value={advancedVideoSource || ""}
+                    onChange={(e) => setAdvancedVideoSource(e.target.value || null)}
+                    className="w-full bg-gray-800/50 border border-gray-700 rounded-lg p-3 text-white"
+                  >
+                    <option value="">Auto (based on style)</option>
+                    <option value="hybrid">Hybrid (AI + Stock Video)</option>
+                    <option value="runway">AI Motion (RunwayML)</option>
+                    <option value="stability">AI Diffusion (Stability)</option>
+                    <option value="pexels">Stock Video (Pexels)</option>
+                  </select>
+                </div>
+              
+                <div>
+                  <label className="block text-sm font-medium mb-1">Video Style</label>
+                  <select
+                    value={advancedVideoStyle}
+                    onChange={(e) => setAdvancedVideoStyle(e.target.value)}
+                    className="w-full bg-gray-800/50 border border-gray-700 rounded-lg p-3 text-white"
+                  >
+                    <option value="realistic">Realistic</option>
+                    <option value="animated">Animated</option>
+                    <option value="creative">Creative</option>
+                    <option value="cinematic">Cinematic</option>
+                  </select>
+                </div>
+                
+                <div>
+                  <label className="block text-sm font-medium mb-1">Duration (seconds)</label>
+                  <input
+                    type="number"
+                    min="3"
+                    max="60"
+                    value={advancedVideoDuration}
+                    onChange={(e) => setAdvancedVideoDuration(parseInt(e.target.value, 10))}
+                    className="w-full bg-gray-800/50 border border-gray-700 rounded-lg p-3 text-white"
+                  />
+                </div>
+                
+                <div className="flex flex-col justify-end">
+                  <div className="flex items-center space-x-2 pb-2 pt-6">
+                    <input
+                      type="checkbox"
+                      id="add-voiceover-advanced"
+                      checked={advancedVideoAddVoiceover}
+                      onChange={(e) => setAdvancedVideoAddVoiceover(e.target.checked)}
+                      className="w-4 h-4 bg-gray-800 rounded border-gray-700"
+                    />
+                    <label htmlFor="add-voiceover-advanced" className="text-sm">Add AI Voiceover</label>
+                  </div>
+                </div>
+              </div>
+              
+              {advancedVideoAddVoiceover && (
+                <div>
+                  <label className="block text-sm font-medium mb-1">Voice</label>
+                  <select
+                    value={advancedVideoVoiceId || ""}
+                    onChange={(e) => setAdvancedVideoVoiceId(e.target.value || null)}
+                    className="w-full bg-gray-800/50 border border-gray-700 rounded-lg p-3 text-white"
+                  >
+                    <option value="">Default Voice</option>
+                    <optgroup label="Professional Voices">
+                      {availableVoices
+                        .filter(voice => voice.category === 'professional')
+                        .map(voice => (
+                          <option key={voice.voice_id} value={voice.voice_id}>
+                            {voice.name}
+                          </option>
+                        ))
+                      }
+                    </optgroup>
+                    <optgroup label="Casual Voices">
+                      {availableVoices
+                        .filter(voice => voice.category === 'casual')
+                        .map(voice => (
+                          <option key={voice.voice_id} value={voice.voice_id}>
+                            {voice.name}
+                          </option>
+                        ))
+                      }
+                    </optgroup>
+                    <optgroup label="Other Voices">
+                      {availableVoices
+                        .filter(voice => !['professional', 'casual', 'custom'].includes(voice.category))
+                        .map(voice => (
+                          <option key={voice.voice_id} value={voice.voice_id}>
+                            {voice.name}
+                          </option>
+                        ))
+                      }
+                    </optgroup>
+                    <optgroup label="Your Custom Voices">
+                      {availableVoices
+                        .filter(voice => voice.category === 'custom')
+                        .map(voice => (
+                          <option key={voice.voice_id} value={voice.voice_id}>
+                            {voice.name}
+                          </option>
+                        ))
+                      }
+                    </optgroup>
+                  </select>
+                </div>
+              )}
+              
+              <button
+                onClick={handleAdvancedVideoGeneration}
+                disabled={loading || !advancedVideoPrompt}
+                className={`w-full py-3 px-6 rounded-lg font-medium transition-all ${
+                  loading || !advancedVideoPrompt
+                    ? 'bg-gray-700 text-gray-400'
+                    : 'bg-gradient-to-r from-purple-500 to-pink-600 hover:from-purple-600 hover:to-pink-700 text-white'
+                }`}
+              >
+                {loading ? (
+                  <div className="flex items-center justify-center">
+                    <FaSpinner className="animate-spin mr-2" />
+                    Generating Video...
+                  </div>
+                ) : advancedVideoSource === 'hybrid' ? (
+                  'Generate Hybrid Video'
+                ) : (
+                  'Generate Advanced Video'
+                )}
+              </button>
+            </div>
+          </motion.div>
+        )}
+
+        {selectedTab === 'voice' && (
+          <motion.div 
+            className="bg-gradient-to-br from-green-900/30 to-teal-900/30 rounded-xl p-8 border border-green-800/50"
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+          >
+            <h2 className="text-2xl font-bold mb-6 flex items-center gap-2">
+              <FaVolumeUp className="text-green-400" />
+              AI Voiceover
+            </h2>
+            
+            {/* Voice Generation Form */}
+            <div className="space-y-6">
+              <div>
+                <label className="block text-sm font-medium mb-1">Script Text</label>
+                <textarea
+                  className="w-full bg-gray-800/50 border border-gray-700 rounded-lg p-3 text-white h-32"
+                  placeholder="Enter the text you want to convert to voice"
+                />
+              </div>
+              
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium mb-1">Voice Style</label>
+                  <select
+                    className="w-full bg-gray-800/50 border border-gray-700 rounded-lg p-3 text-white"
+                    value={selectedVoice || ""}
+                    onChange={(e) => setSelectedVoice(e.target.value || null)}
+                  >
+                    <option value="">Select a voice</option>
+                    <optgroup label="Professional Voices">
+                      {availableVoices
+                        .filter(voice => voice.category === 'professional')
+                        .map(voice => (
+                          <option key={voice.voice_id} value={voice.voice_id}>
+                            {voice.name}
+                          </option>
+                        ))
+                      }
+                    </optgroup>
+                    <optgroup label="Casual Voices">
+                      {availableVoices
+                        .filter(voice => voice.category === 'casual')
+                        .map(voice => (
+                          <option key={voice.voice_id} value={voice.voice_id}>
+                            {voice.name}
+                          </option>
+                        ))
+                      }
+                    </optgroup>
+                    <optgroup label="Other Voices">
+                      {availableVoices
+                        .filter(voice => !['professional', 'casual', 'custom'].includes(voice.category))
+                        .map(voice => (
+                          <option key={voice.voice_id} value={voice.voice_id}>
+                            {voice.name}
+                          </option>
+                        ))
+                      }
+                    </optgroup>
+                    <optgroup label="Your Custom Voices">
+                      {availableVoices
+                        .filter(voice => voice.category === 'custom')
+                        .map(voice => (
+                          <option key={voice.voice_id} value={voice.voice_id}>
+                            {voice.name}
+                          </option>
+                        ))
+                      }
+                    </optgroup>
+                  </select>
+                </div>
+                
+                <div>
+                  <label className="block text-sm font-medium mb-1">Speech Pace</label>
+                  <select
+                    className="w-full bg-gray-800/50 border border-gray-700 rounded-lg p-3 text-white"
+                  >
+                    <option value="slow">Slow</option>
+                    <option value="medium" selected>Medium</option>
+                    <option value="fast">Fast</option>
+                  </select>
+                </div>
+              </div>
+              
+              <div>
+                <label className="block text-sm font-medium mb-1">Upload Custom Voice (Optional)</label>
+                <div className="border-dashed border-2 border-gray-600 rounded-lg p-4 text-center">
+                  <div className="flex items-center justify-center mb-2">
+                    <FaMicrophone className="text-gray-400 text-xl" />
+                  </div>
+                  <p className="text-sm text-gray-400">Drag & drop a voice sample file or click to browse</p>
+                </div>
+              </div>
+
+              <button
+                className="w-full py-3 px-6 rounded-lg font-medium transition-all bg-gradient-to-r from-green-500 to-teal-600 hover:from-green-600 hover:to-teal-700 text-white"
+              >
+                Generate Voiceover
+              </button>
+            </div>
+          </motion.div>
+        )}
+
+        {/* Results Section */}
+        {jobStatus?.status === 'completed' && jobStatus?.result && (
+          <motion.div 
+            className="mt-8 bg-gradient-to-br from-gray-800/50 to-gray-900/50 rounded-xl p-6 border border-gray-700/50"
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+          >
+            <h2 className="text-2xl font-bold mb-4 flex items-center gap-2">
+              <FaCheck className="text-green-400" />
+              Your Video is Ready!
+            </h2>
+            
+            <div className="aspect-video bg-black rounded-lg overflow-hidden mb-4">
+              <video 
+                src={`http://localhost:8000/api/download/${jobStatus?.result?.video_path}`}
+                controls
+                className="w-full h-full"
+              />
+            </div>
+            
+            <div className="flex flex-wrap gap-3 mt-4">
+              <button
+                className="py-2 px-4 bg-blue-600 hover:bg-blue-700 rounded-lg flex items-center gap-2 transition-colors"
+                onClick={() => window.open(`http://localhost:8000/api/download/${jobStatus?.result?.video_path}`, '_blank')}
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                </svg>
+                Download Video
+              </button>
+              
+              <button
+                className="py-2 px-4 bg-gray-700 hover:bg-gray-600 rounded-lg flex items-center gap-2 transition-colors"
+                onClick={() => {
+                  setJobId(null);
+                  setJobStatus(null);
+                }}
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                </svg>
+                Create Another
+              </button>
+            </div>
+          </motion.div>
+        )}
+
+        {/* Loading and error states */}
+        {loading && !jobStatus && (
+          <div className="text-center my-8">
+            <FaSpinner className="animate-spin text-4xl mx-auto mb-4 text-blue-500" />
+            <p className="text-gray-300">Uploading and processing...</p>
+          </div>
+        )}
+        
+        {/* Show progress indicator when job is in progress */}
+        {loading && jobStatus && jobStatus.status !== 'completed' && jobStatus.status !== 'failed' && (
+          <div className="bg-gray-900/70 border border-gray-700 rounded-lg p-6 my-6">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-gray-300 capitalize">{jobStatus.status.replace('_', ' ')}</span>
+              <span className="text-blue-400 font-semibold">{jobStatus.progress}%</span>
+            </div>
+            
+            {/* Progress bar */}
+            <div className="w-full bg-gray-800 rounded-full h-2.5 mb-3">
+              <div 
+                className="bg-gradient-to-r from-blue-500 to-purple-600 h-2.5 rounded-full transition-all duration-300 ease-out" 
+                style={{ width: `${jobStatus.progress}%` }}
+              ></div>
+            </div>
+            
+            {/* Estimated time remaining */}
+            {jobStatus?.estimated_time_remaining !== null && jobStatus?.estimated_time_remaining !== undefined && jobStatus?.estimated_time_remaining > 0 && (
+              <div className="text-sm text-gray-400 flex items-center">
+                <FaClock className="mr-2" />
+                <span>
+                  Estimated time remaining: {
+                    jobStatus.estimated_time_remaining > 60 
+                      ? `${Math.ceil(jobStatus.estimated_time_remaining / 60)} minutes` 
+                      : `${jobStatus.estimated_time_remaining} seconds`
+                  }
+                </span>
+              </div>
+            )}
+            
+            {/* Status description */}
+            <div className="mt-3 text-sm text-gray-300">
+              {jobStatus.status === 'generating_script' && (
+                <p>Creating an engaging script based on your input...</p>
+              )}
+              {jobStatus.status === 'generating_video' && (
+                <p>Crafting your video with AI-powered visuals...</p>
+              )}
+              {jobStatus.status === 'adding_voiceover' && (
+                <p>Adding professional narration to your video...</p>
+              )}
+              {jobStatus.status === 'enhancing_video' && (
+                <p>Polishing and enhancing your video for best quality...</p>
+              )}
+              {jobStatus.status === 'processing_audio' && (
+                <p>Fine-tuning audio for perfect synchronization...</p>
+              )}
+              {jobStatus.status === 'finalizing' && (
+                <p>Putting the finishing touches on your masterpiece...</p>
+              )}
+            </div>
+          </div>
+        )}
+        
+        {error && (
+          <div className="bg-red-900/30 border border-red-800 rounded-lg p-4 my-6 text-center">
+            <p className="text-red-300">{error}</p>
+          </div>
+        )}
+
+        {/* Prompt Templates Modal */}
+        {showPromptsModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80" onClick={() => setShowPromptsModal(false)}>
+            <div className="bg-gray-900 border border-gray-700 rounded-lg max-w-2xl w-full p-6 max-h-[80vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+              <h3 className="text-xl font-bold mb-4">Smart Prompt Templates</h3>
+              <div className="space-y-4">
+                <div className="border border-gray-700 rounded-lg p-4">
+                  <h4 className="text-lg font-medium text-green-400 mb-2 flex items-center"><FaUserTie className="mr-2" /> HVAC Testimonial Template</h4>
+                  <p className="text-gray-300 mb-2 text-sm">Perfect for creating authentic testimonial videos with HVAC professionals.</p>
+                  <div className="bg-gray-800 p-3 rounded text-sm">
+                    <pre className="whitespace-pre-wrap">{testimonialTemplate}</pre>
+                  </div>
+                  <button 
+                    className="mt-3 bg-green-600 hover:bg-green-700 text-white px-3 py-1 rounded text-sm transition"
+                    onClick={() => {
+                      setAdvancedVideoPrompt(testimonialTemplate);
+                      setShowPromptsModal(false);
+                    }}
+                  >
+                    Use This Template
+                  </button>
+                </div>
+                
+                <div className="border border-gray-700 rounded-lg p-4">
+                  <h4 className="text-lg font-medium text-blue-400 mb-2 flex items-center"><FaBox className="mr-2" /> Product Demo Template</h4>
+                  <p className="text-gray-300 mb-2 text-sm">Showcase your products with this structured demo format.</p>
+                  <div className="bg-gray-800 p-3 rounded text-sm">
+                    <pre className="whitespace-pre-wrap">{productTemplate}</pre>
+                  </div>
+                  <button 
+                    className="mt-3 bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 rounded text-sm transition"
+                    onClick={() => {
+                      setAdvancedVideoPrompt(productTemplate);
+                      setShowPromptsModal(false);
+                    }}
+                  >
+                    Use This Template
+                  </button>
+                </div>
+                
+                <div className="border border-gray-700 rounded-lg p-4">
+                  <h4 className="text-lg font-medium text-amber-400 mb-2 flex items-center"><FaInfoCircle className="mr-2" /> Explainer Video Template</h4>
+                  <p className="text-gray-300 mb-2 text-sm">Educational content that explains concepts clearly.</p>
+                  <div className="bg-gray-800 p-3 rounded text-sm">
+                    <pre className="whitespace-pre-wrap">{explainerTemplate}</pre>
+                  </div>
+                  <button 
+                    className="mt-3 bg-amber-600 hover:bg-amber-700 text-white px-3 py-1 rounded text-sm transition"
+                    onClick={() => {
+                      setAdvancedVideoPrompt(explainerTemplate);
+                      setShowPromptsModal(false);
+                    }}
+                  >
+                    Use This Template
+                  </button>
+                </div>
+              </div>
+              <div className="mt-5 flex justify-end">
+                <button 
+                  className="bg-gray-700 hover:bg-gray-600 text-white px-4 py-2 rounded transition"
+                  onClick={() => setShowPromptsModal(false)}
+                >
+                  Close
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
-    </div>
+    </main>
   );
 } 

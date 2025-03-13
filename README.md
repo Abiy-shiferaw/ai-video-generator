@@ -1,48 +1,30 @@
 # AI Video Generator
 
-An application for generating professional videos and animated ads from text descriptions or images using AI, with optional AI voiceover capabilities.
+An application for generating professional videos and animated ads using AI, optimized for creating engaging social media content.
 
-## Features
+## Core Features
 
-- **Image to Video**: Transform static images into dynamic videos with customizable effects, styles, and duration
-- **Text to Video**: Create videos directly from text prompts with various style options
-- **Professional Ad Creator**: Generate sleek, non-AI-looking animated advertisements with brand customization
-- **AI Voiceover**: Add AI-generated voiceovers to your videos
-- **Custom Voice Training**: Train the system on your voice for personalized voiceovers
+- **Professional Ad Creator**: Generate sleek, professional-looking animated advertisements with brand customization, perfect for social media marketing.
+- **Advanced Motion Video**: Create dynamic AI-generated videos with real motion and professional effects using cutting-edge AI technology.
+- **AI Voiceover**: Add professional AI-generated voiceovers to your videos with voice customization options.
 
-## Professional Ad Creator
+## Ad Creator Capabilities
 
-Our new Professional Ad Creator feature allows you to:
+The Professional Ad Creator allows you to create high-quality, engaging advertising content for:
 
-- Create high-quality, professional-looking animated ads
-- Customize your brand colors, animation style, and visual aesthetic
-- Choose from multiple ad templates (product showcase, testimonial, explainer, etc.)
-- Add voiceover using AI voice cloning technology
-- Generate ads that don't look AI-generated but have a polished, professional appearance
+- **Product Showcases**: Highlight product features with professional animations and transitions
+- **Brand Promotion**: Build brand awareness with custom colors, logos, and messaging
+- **Social Media Campaigns**: Generate content optimized for various social platforms
 
-### Ad Templates
+## Advanced Motion Video Features
 
-- **Product Showcase**: Highlight product features and benefits
-- **Testimonial**: Feature customer testimonials in an engaging format
-- **Explainer**: Educational videos explaining your product or service
-- **Storytelling**: Narrative-driven advertising that tells a compelling story
-- **Corporate**: Professional messaging with strong brand emphasis
+Our Advanced Motion Video feature leverages cutting-edge AI technology:
 
-### Animation Styles
+- **AI-Powered Motion**: Generate videos with realistic motion using RunwayML technology
+- **Professional Effects**: Apply cinematic effects like Ken Burns, 3D rotation, and dynamic zoom
+- **Custom Animations**: Add animated text and graphics with professional transitions
 
-- **Sleek & Smooth**: Clean, professional animations with smooth transitions
-- **Motion Graphics**: Dynamic motion graphics with modern design elements
-- **Isometric**: 3D isometric animations with depth and perspective
-- **2D Character**: Character-based animations with personality
-- **Animated Infographics**: Data-driven visualizations that inform and engage
-
-## Tech Stack
-
-- **Frontend**: Next.js, React, Tailwind CSS
-- **Backend**: Python, Flask, OpenAI API, DALL-E API, ElevenLabs API
-- **Processing**: MoviePy, FFmpeg, Google Text-to-Speech
-
-## Setup Instructions
+## Quick Setup
 
 ### Backend
 
@@ -51,18 +33,21 @@ Our new Professional Ad Creator feature allows you to:
    cd backend
    ```
 
-2. Install dependencies:
+2. Install the required dependencies:
    ```
    pip install -r requirements.txt
    ```
 
-3. Create a `.env` file with your API keys:
+3. Create a `.env` file and add your API keys:
    ```
-   OPENAI_API_KEY=your_openai_api_key
-   ELEVENLABS_API_KEY=your_elevenlabs_api_key
+   OPENAI_API_KEY=your_openai_key
+   ELEVEN_LABS_API_KEY=your_elevenlabs_key
+   RUNWAYML_API_KEY=your_runwayml_key
+   PEXELS_API_KEY=your_pexels_key
+   STABILITY_API_KEY=your_stability_key
    ```
 
-4. Start the server:
+4. Start the backend server:
    ```
    python app.py
    ```
@@ -74,16 +59,27 @@ Our new Professional Ad Creator feature allows you to:
    cd frontend
    ```
 
-2. Install dependencies:
+2. Install the required dependencies:
    ```
    npm install
    ```
 
-3. Start the development server:
+3. Start the frontend development server:
    ```
    npm run dev
    ```
 
-## License
+4. Open your browser and go to `http://localhost:3000`
 
-[MIT License](LICENSE) 
+## Usage
+
+1. Choose the feature you want to use (Professional Ad Creator or Advanced Motion Video)
+2. Enter your content details and preferences
+3. Generate and download your professional video
+
+## Technologies
+
+- **AI Video Generation**: RunwayML, Stability AI, OpenAI DALL-E
+- **Frontend**: Next.js, React, Tailwind CSS
+- **Backend**: Python, Flask
+- **Voice Synthesis**: Eleven Labs 
